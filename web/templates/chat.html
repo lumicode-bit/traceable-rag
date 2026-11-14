@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}问答 · 工业设备运维知识库{% endblock %}
+
+{% block content %}
+<h1>故障问答</h1>
+<p class="lead">描述故障现象，系统从手册里找出原文并逐条标注来源。找不到相关内容时它会直接说没有。</p>
+
+{% if mock_mode %}
+<div class="alert alert-warn" role="status">
+  当前是 MOCK 模式：向量与对话都由本地桩模型模拟，回答只用于验证链路，<strong>不代表真实模型效果</strong>。
+</div>
+{% endif %}
+
+<form id="qa-form" class="card" autocomplete="off">
+  <label class="field">
+    <span class="label">问题</span>
+    <textarea id="question" name="question" rows="3" maxlength="500"
+              placeholder="例如：上电就报 Err23 报警，电机或输出线对地短路怎么处理"></textarea>
+  </label>
+
+  <div class="row">
+    <label class="field field-inline">
+      <span class="label">检索模式</span>
+      <select id="mode" name="mode">
+        {% for value, text in modes %}
+        <option value="{{ value }}"{% if value == default_mode %} selected{% endif %}>{{ text }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" id="ask" class="btn btn-primary">提问</button>
+  </div>
+  <p class="hint">片段数取 {{ default_top_k }} 条。模式只影响怎么找片段，不影响「必须带来源」这条规则。</p>
+</form>
+
+<div id="error" class="alert alert-error" role="alert" hidden></div>
+
+<div id="empty" class="empty">还没有提问。<br>输入一段故障现象，回车或点「提问」。</div>
+
+<section id="result" hidden>
+  <div class="row row-between">
+    <h2>回答</h2>
+    <span id="meta" class="meta"></span>
+  </div>
+  <div id="status" class="status" role="status" hidden></div>
+  <div id="answer" class="answer"></div>
+
+  <h2>引用来源</h2>
+  <p class="hint">每条引用都可以点开，查看本次检索到的完整原文。</p>
+  <div id="cites" class="cites"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>window.TOP_K = {{ default_top_k }};</script>
+<script src="/static/chat.js"></script>
+{% endblock %}

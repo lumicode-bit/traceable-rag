@@ -1,0 +1,81 @@
+name: ci
+
+# 三道闸，按「越来越贵」排：
+#   1) 桩模式全量测试 —— 不需要任何 key，几十秒
+#   2) 冒烟语料入库 + 建索引 —— 语料由脚本现场生成（二进制不进仓库）
+#   3) 引用/拒答/支撑性验收 —— 需要 key，跑 3 道题，失败就是失败，不吞错误
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 桩模式：不需要 key，也不访问外网模型
+      - name: 全量测试（MOCK_MODE=1）
+        env:
+          MOCK_MODE: "1"
+          DATABASE_URL: sqlite:///./ci.db
+        run: python -m pytest -q
+
+      # 生成一页手册 + 3 道题：让下面那道闸有东西可验，而不是空跑
+      - name: 生成冒烟语料
+        run: python tests/fixtures/generate_smoke_corpus.py
+
+      - name: 入库并建索引
+        if: ${{ secrets.EMBED_API_KEY != '' }}
+        env:
+          DATABASE_URL: sqlite:///./ci.db
+          EMBED_BASE_URL: ${{ secrets.EMBED_BASE_URL }}
+          EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
+          EMBED_MODEL: ${{ secrets.EMBED_MODEL }}
+          EMBED_DIM: ${{ secrets.EMBED_DIM }}
+        run: |
+          python -m app.ingest.pipeline data/raw
+          python -m app.retrieval.bench --rebuild
+
+      # 不挂 `|| true`：这道闸要么绿要么红。
+      # 没配 key 时整步跳过（而不是跑出一个假绿）。
+      - name: 引用 / 拒答 / 支撑性验收（需要 key）
+        if: ${{ secrets.LLM_API_KEY != '' && secrets.EMBED_API_KEY != '' }}
+        env:
+          MOCK_MODE: "0"
+          DATABASE_URL: sqlite:///./ci.db
+          EMBED_BASE_URL: ${{ secrets.EMBED_BASE_URL }}
+          EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
+          EMBED_MODEL: ${{ secrets.EMBED_MODEL }}
+          EMBED_DIM: ${{ secrets.EMBED_DIM }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+        run: |
+          python tests/check_citations.py \
+            --queries data/eval/ci_smoke.jsonl \
+            --top-k 3 \
+            --out data/eval/ci_result.json
+
+      - name: 存档评测产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-artifacts
+          path: |
+            data/eval/*.json
+            results/*.md
+          if-no-files-found: ignore
+          retention-days: 14

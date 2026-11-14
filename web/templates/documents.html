@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}文档管理 · 工业设备运维知识库{% endblock %}
+
+{% block content %}
+<h1>文档管理</h1>
+<p class="lead">上传后会自动在后台解析、切块并补建索引。状态会自己刷新，不用手动点。</p>
+
+<form id="upload-form" class="card">
+  <label class="field">
+    <span class="label">选择文件（PDF / DOCX / PNG / JPG，单个不超过 {{ max_upload_mb }}MB）</span>
+    <input type="file" id="file" name="file" accept=".pdf,.docx,.png,.jpg,.jpeg">
+  </label>
+  <div class="row">
+    <button type="submit" id="upload" class="btn btn-primary">上传并解析</button>
+    <button type="button" id="refresh" class="btn">刷新列表</button>
+  </div>
+</form>
+
+<div id="error" class="alert alert-error" role="alert" hidden></div>
+<div id="status" class="status" role="status" hidden></div>
+
+<div class="row row-between">
+  <h2>已入库文档</h2>
+  <span id="count" class="meta"></span>
+</div>
+
+<div id="list" class="table-wrap">
+  <div class="empty">正在读取文档列表…</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/documents.js"></script>
+{% endblock %}

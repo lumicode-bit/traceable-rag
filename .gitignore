@@ -1,0 +1,25 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+
+# 真实文档与评测数据由用户自行放入，不提交示例文档或示例数据
+data/raw/*
+data/eval/*
+!data/raw/.gitkeep
+!data/eval/.gitkeep
+# 题库本身要进仓库：它只有问题与金标位置（文档名+页码），不含手册正文，
+# 是「评测怎么做的」的直接证据，别人可以拿它复跑
+!data/eval/questions.jsonl
+
+# 本地 SQLite 库与 WAL 临时文件：可随时由「入库 + 重建索引」重新生成
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# 评测报告与证书：报告是运行结果，证书含私钥，都不能进仓库
+results/*
+!results/.gitkeep
+deploy/certbot/

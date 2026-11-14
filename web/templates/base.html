@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}工业设备运维知识库{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <a class="brand" href="/">工业设备运维知识库</a>
+      <nav class="nav">
+        <a href="/"{% if nav == 'chat' %} class="active"{% endif %}>问答</a>
+        <a href="/documents"{% if nav == 'documents' %} class="active"{% endif %}>文档</a>
+        <a href="/eval"{% if nav == 'eval' %} class="active"{% endif %}>评测</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer wrap">
+    <p>回答只依据检索到的原文片段，每条结论都标注来源文档与页码。</p>
+  </footer>
+
+  <script src="/static/common.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

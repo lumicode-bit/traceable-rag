@@ -1,0 +1,85 @@
+services:
+  app:
+    build: .
+    container_name: kb-app
+    environment:
+      # 存储：容器内用挂载卷上的 SQLite 单文件（绝对路径 4 个斜杠）。
+      # 不再需要 Postgres / pgvector；真要换，只改这一行指向 pgvector 实例。
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/kb.db}
+      # 没有 key 时置 1：向量、重排、对话全部换成本地桩模型，链路照样跑通
+      MOCK_MODE: ${MOCK_MODE:-0}
+
+      # 向量接口（OpenAI 兼容 /embeddings）
+      EMBED_BASE_URL: ${EMBED_BASE_URL:-}
+      EMBED_API_KEY: ${EMBED_API_KEY:-}
+      EMBED_MODEL: ${EMBED_MODEL:-}
+      EMBED_DIM: ${EMBED_DIM:-512}
+      EMBED_BATCH_SIZE: ${EMBED_BATCH_SIZE:-32}
+
+      # 重排接口（/rerank）：默认关闭，开了也是一次网络往返
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      RERANK_BASE_URL: ${RERANK_BASE_URL:-}
+      RERANK_API_KEY: ${RERANK_API_KEY:-}
+      RERANK_MODEL: ${RERANK_MODEL:-}
+
+      # 对话接口（OpenAI 兼容 /chat/completions）
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-2}
+      LLM_RETRY_BACKOFF_SECONDS: ${LLM_RETRY_BACKOFF_SECONDS:-1}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4000}
+      LLM_INCLUDE_USAGE: ${LLM_INCLUDE_USAGE:-true}
+      LLM_EXTRA_BODY: ${LLM_EXTRA_BODY:-}
+
+      # 检索与生成的其他参数
+      BM25_DICT_PATH: ${BM25_DICT_PATH:-data/dict.txt}
+      RETRIEVAL_CANDIDATES: ${RETRIEVAL_CANDIDATES:-50}
+      RRF_K: ${RRF_K:-60}
+      CHAT_MODE: ${CHAT_MODE:-hybrid}
+      CHAT_TOP_K: ${CHAT_TOP_K:-5}
+      CONTEXT_MAX_CHARS: ${CONTEXT_MAX_CHARS:-3000}
+
+      # Web 层：上传目录、评测报告、上传上限
+      RAW_DIR: ${RAW_DIR:-data/raw}
+      EVAL_REPORT_PATH: ${EVAL_REPORT_PATH:-results/report.md}
+      EVAL_REPORT_DIR: ${EVAL_REPORT_DIR:-data/eval}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+    volumes:
+      # 文档、SQLite 库文件都在这里；库是单文件，备份就是拷这个目录
+      - ./data:/app/data
+      # 评测报告可直接挂进来，改完刷新页面即可，不用重启容器
+      - ./results:/app/results
+    # 只监听宿主机本地回环：公网入口一律走 nginx，避免绕过反代直连 8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: kb-nginx
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # HTTP 版：deploy/nginx.conf；签好证书后按 DEPLOY.md 换成 deploy/nginx.https.conf
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # certbot 的 webroot 与证书目录（相对路径，勿改成绝对路径）
+      - ./deploy/certbot/www:/var/www/certbot
+      - ./deploy/certbot/conf:/etc/letsencrypt:ro
+    restart: unless-stopped
+
+  # 只用于签发 / 续期证书，平时不启动：docker compose --profile certbot run --rm certbot ...
+  certbot:
+    image: certbot/certbot:latest
+    container_name: kb-certbot
+    profiles: ["certbot"]
+    volumes:
+      - ./deploy/certbot/www:/var/www/certbot
+      - ./deploy/certbot/conf:/etc/letsencrypt
+    entrypoint: ["certbot"]
+    command: ["--help"]

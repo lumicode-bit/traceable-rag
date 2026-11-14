@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}评测报告 · 工业设备运维知识库{% endblock %}
+
+{% block content %}
+<h1>评测报告</h1>
+<p class="lead">检索与生成的实测结果，直接读取报告文件渲染，不做任何加工。</p>
+
+{% if reports %}
+<form class="card" method="get" action="/eval">
+  <div class="row">
+    <label class="field field-inline">
+      <span class="label">报告文件</span>
+      <select name="report" onchange="this.form.submit()">
+        {% for item in reports %}
+        <option value="{{ item.name }}"{% if selected and item.name == selected.name %} selected{% endif %}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn">重新载入</button>
+  </div>
+  {% if selected %}
+  <p class="hint">读取自 {{ selected.name }}（{{ selected.size_kb }}KB，修改于 {{ selected.modified }}）</p>
+  {% endif %}
+</form>
+
+{% if error %}
+<div class="alert alert-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<article class="report">
+  {{ body | safe }}
+</article>
+{% else %}
+<div class="empty">
+  还没有可读取的评测报告。<br><br>
+  生成方式：<code>python -m app.retrieval.bench --save</code>，
+  或把报告放到 <code>{{ candidates[0] }}</code> / <code>{{ candidates[1] }}</code>。
+</div>
+{% endif %}
+{% endblock %}
