@@ -290,6 +290,7 @@ app/
 └── api/               chat（SSE）、documents、chunks
 web/                   templates（4 个）+ static（css + 3 个 js）
 deploy/                nginx HTTP/HTTPS 配置
+tools/                 diag_chunks.py（块体检）、recall_at_budget.py（等字数预算召回）
 tests/                 pytest + check_citations.py（引用准确率 + 结论支撑性校验）
 .github/workflows/     CI：桩模式跑全量测试；配了 key 时再做一次小规模验收
 data/                  raw（原始文档）、kb.db（SQLite）、dict.txt（jieba 词典）
@@ -307,8 +308,9 @@ docs/                  DESIGN.md（设计取舍）、DEMO.md（演示脚本）�
   另外它放过了「数字对、单位错」的情况（例如块里是 16A 而结论写 16mm²），这一条是已知的宽松处。
 - **页码级 Recall@5 会高估**：一页有多个块时，命中「接线示意图」也算命中，而真正回答问题的「选型表」可能排在第 8。
 - **表格是原子块**：合并单元格会转成错位的 Markdown，读表可能读错。试过「按行拆 + 复制表头」，
-  实测更差（块级 Recall@5 0.979 → 0.896，块数 +35%：重复表头制造了近重复干扰，挤占 top-5 名额），
-  所以默认关闭，对照记录见 `docs/DESIGN.md`。
+  在 **3500 字预算**下反而低 4 个点（0.979 → 0.938，块数 +35%）——重复表头制造近重复干扰，
+  挤占 top-5 名额；但**预算压到 1500 字时拆块反超 2 个点**。所以默认关闭，
+  完整对照（`tools/recall_at_budget.py`）见 `docs/DESIGN.md`。
 - **不做登录**：演示用，任何拿到地址的人都能上传与删除。
 
 更细的失败模式见 [`docs/DESIGN.md`](docs/DESIGN.md)。
