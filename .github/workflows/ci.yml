@@ -36,14 +36,21 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # opencv（RapidOCR 的依赖）在精简 Linux 上导入时会找 libGL.so.1，缺了直接 ImportError
+      - name: 安装系统库（opencv 需要）
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       # 桩模式：不需要 key，也不访问外网模型
+      # tee 一份日志：失败时 artifact 里能看到具体哪条用例、什么断言，不用去猜
       - name: 全量测试（MOCK_MODE=1）
-        run: python -m pytest -q
+        run: |
+          set -o pipefail
+          python -m pytest -q 2>&1 | tee pytest.log
 
       # 生成一页手册 + 3 道题：让下面那道闸有东西可验，而不是空跑
       - name: 生成冒烟语料
@@ -76,5 +83,6 @@ jobs:
           path: |
             data/eval/*.json
             results/*.md
+            pytest.log
           if-no-files-found: ignore
           retention-days: 14
