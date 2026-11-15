@@ -101,6 +101,10 @@ flowchart TB
 > 命中「接线示意图」不再算成功。Recall 是稳定的（多轮一致）；**耗时不要抠单个数字**——
 > 关缓存冷查询在不同轮次实测 325–475ms，全是远端 embedding 往返的网络抖动。
 
+> **金标核验**：`tools/check_gold.py` 把每道题里的确切标识符（功能码/型号/故障码/端子号）
+> 拿到金标块里查一遍——26 条可核验的题全部通过、0 条可疑；其余 33 条不含标识符，只能人工抽查。
+> 金标错一条会压低整份评测的绝对值，所以这一步值得每次换题库都跑一遍。
+
 > **`eval_runs` / `eval_results` 两张表在 clone 下来时是空的**，这是设计而非缺陷：
 > `data/*.db` 不进仓库（里面是真实手册切出来的块），任何库内状态都随本地库一起被忽略。
 > 想自己看到这两张表有数据，跑一次 `python -m app.retrieval.bench --save`
@@ -290,7 +294,7 @@ app/
 └── api/               chat（SSE）、documents、chunks
 web/                   templates（4 个）+ static（css + 3 个 js）
 deploy/                nginx HTTP/HTTPS 配置
-tools/                 diag_chunks.py（块体检）、recall_at_budget.py（等字数预算召回）
+tools/                 diag_chunks.py（块体检）、recall_at_budget.py（等字数预算召回）、check_gold.py（金标核验）
 tests/                 pytest + check_citations.py（引用准确率 + 结论支撑性校验）
 .github/workflows/     CI：桩模式跑全量测试；配了 key 时再做一次小规模验收
 data/                  raw（原始文档）、kb.db（SQLite）、dict.txt（jieba 词典）
