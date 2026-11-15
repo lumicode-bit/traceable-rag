@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     retrieval_candidates: int = 50
     # RRF 平滑常数，经验值 60
     rrf_k: int = 60
+    # 表格行级索引：把每行当检索单元，命中后给**它所属的整块**加分（不新增候选）。
+    # 解决「整块是几十行平均方向、问某一行时排不上来」（q014 就是这种）。
+    # 默认关闭：开到 0.5 权重的实测结果见 docs/DESIGN.md，收益不足以抵消复杂度。
+    table_row_index: bool = False
+    # 行级命中给整块的加分量（相对 RRF 分数的比例）。0.5 表示「最多相当于半路命中」。
+    table_row_weight: float = 0.5
 
     # ---------------- 生成层（P3） ----------------
     # OpenAI 兼容接口；三项任一为空即视为未配置，接口返回结构化错误而不是抛异常

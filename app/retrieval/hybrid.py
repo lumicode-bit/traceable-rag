@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import SessionLocal
 from app.models import Chunk, Document
-from app.retrieval import bm25, vector
+from app.retrieval import bm25, rows, vector
 
 # 查询里的「确切标识符」：f4-01 / cp600-4t22g / err23 / di2 / a01
 # 与 bm25 的分词规则保持同族，但这里要的是「整串出现」，不是切词
@@ -47,17 +47,20 @@ class FusedHit:
     bm25_rank: int | None
     vector_score: float | None = None
     bm25_score: float | None = None
+    row_rank: int | None = None
     # 调试用：strong_match=1 表示这块是靠「确切标识符全命中」提上来的
     extra: dict[str, float] = field(default_factory=dict)
 
     @property
     def sources(self) -> str:
-        """来源标记：V=向量命中，B=BM25 命中，VB=两路都命中。"""
+        """来源标记：V=向量命中，B=BM25 命中，R=表格行级命中。"""
         mark = ""
         if self.vector_rank is not None:
             mark += "V"
         if self.bm25_rank is not None:
             mark += "B"
+        if self.row_rank is not None:
+            mark += "R"
         return mark
 
 
@@ -83,6 +86,7 @@ def rrf_fuse(
             score=score,
             vector_rank=detail[chunk_id].get("vector"),
             bm25_rank=detail[chunk_id].get("bm25"),
+            row_rank=detail[chunk_id].get("rows"),
         )
         for chunk_id, score in scores.items()
     ]
@@ -111,12 +115,32 @@ def search(
         vector_hits = vector_job.result()
         bm25_hits = bm25_job.result()
 
-    fused = rrf_fuse(
-        {
-            "vector": [chunk_id for chunk_id, _ in vector_hits],
-            "bm25": [chunk_id for chunk_id, _ in bm25_hits],
-        }
-    )
+    lists: dict[str, list[int]] = {
+        "vector": [chunk_id for chunk_id, _ in vector_hits],
+        "bm25": [chunk_id for chunk_id, _ in bm25_hits],
+    }
+    # 第三路（可选）：表格**行级**命中，命中后仍返回它所属的整块。
+    # 整块是几十行的均值，问「U0-74 的通信地址」时那一行的信号被稀释掉了；
+    # 行级只用来「认定是哪一块」，喂给模型的还是整块（表头与上下文都在）。
+    #
+    # 注意这是**加分**，不是并列第三路：试过把行级当独立一路塞进 RRF，块级 Recall 从
+    # 0.938 掉到 0.646——行级名单会把一堆「只命中一行」的表块塞进候选，挤掉真正相关的块。
+    fused = rrf_fuse(lists)
+
+    if settings.table_row_index:
+        # 只认「查询里的确切标识符真的出现在某一行」：不加这个约束时，凡是问参数的查询
+        # 都会命中整张表的每一行（通用词太多），实测把块级 Recall 从 0.938 拉到 0.729。
+        row_hits = rows.search(session, query, depth, must_contain=_query_identifiers(query))
+        if row_hits:
+            bonus = {
+                chunk_id: settings.table_row_weight / (settings.rrf_k + rank)
+                for rank, (chunk_id, _) in enumerate(row_hits, start=1)
+            }
+            for hit in fused:
+                if hit.chunk_id in bonus:
+                    hit.score += bonus[hit.chunk_id]
+                    hit.row_rank = 1
+            fused.sort(key=lambda hit: (-hit.score, hit.chunk_id))
 
     vector_scores = dict(vector_hits)
     bm25_scores = dict(bm25_hits)
