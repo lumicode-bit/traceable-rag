@@ -101,6 +101,11 @@ flowchart TB
 > 命中「接线示意图」不再算成功。Recall 是稳定的（多轮一致）；**耗时不要抠单个数字**——
 > 关缓存冷查询在不同轮次实测 325–475ms，全是远端 embedding 往返的网络抖动。
 
+> **`eval_runs` / `eval_results` 两张表在 clone 下来时是空的**，这是设计而非缺陷：
+> `data/*.db` 不进仓库（里面是真实手册切出来的块），任何库内状态都随本地库一起被忽略。
+> 想自己看到这两张表有数据，跑一次 `python -m app.retrieval.bench --save`
+> （本机当前：1 次运行 / 30 条结果）。上面的数字不依赖这两张表，来自 `results/report.md`。
+
 **生成与引用**（`deepseek-flash`，59 条题，其中 11 条是库里确实没有的）
 
 | 指标 | 结果 |
@@ -250,11 +255,23 @@ docker compose up -d --build      # 打开 http://localhost（nginx 反代）
 | `/documents` 文档 | 上传 PDF/DOCX/图片，后台解析并自动建索引；看状态、页数、块数；删除、重新解析 |
 | `/eval` 评测 | 把报告 Markdown 渲染成表格，可切换报告文件 |
 
-截图占位（补图时建议 390px 手机宽度 + 桌面各一张）：
+## 界面
 
-| 问答页 | 文档页 | 评测页 |
-| --- | --- | --- |
-| `![问答页](docs/images/chat.png)` | `![文档页](docs/images/documents.png)` | `![评测页](docs/images/eval.png)` |
+问答页（桌面 1280px）：问题、流式回答、每条结论带 `[文档名 p.页码]`，下方 5 张引用卡片可展开看原文。
+
+![问答页](docs/images/chat-desktop.png)
+
+手机（390px）：同一页面，输入框与按钮占满宽度、引用卡片纵向排列，无横向滚动条。
+
+<img src="docs/images/chat-mobile.png" width="390" alt="手机上的问答页">
+
+文档管理页：上传后状态从「解析中」自动变「已入库」，能看到页数、块数与已向量化块数。
+
+![文档页](docs/images/documents.png)
+
+评测页：`results/report.md` 直接渲染成表格，失败案例逐条列出。
+
+![评测页](docs/images/eval.png)
 
 ---
 

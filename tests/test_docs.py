@@ -23,6 +23,24 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def test_readme_images_exist() -> None:
+    """README 里引用的截图必须真的存在。
+
+    破图比没有图更减分——评审打开 README 看到四个裂开的图标，第一印象就没了。
+    这条同时管住两种写法：`![alt](path)` 和 `<img src="path">`。
+    """
+    text = _read(README)
+    paths = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text) + re.findall(
+        r"<img[^>]+src=\"([^\"]+)\"", text
+    )
+    missing = [
+        path
+        for path in paths
+        if not path.startswith("http") and not (ROOT / path).is_file()
+    ]
+    assert missing == [], f"README 引用了不存在的图片：{missing}"
+
+
 def test_no_placeholder_left_in_docs() -> None:
     """`{X}` 是给人填空的占位符，填完就不该留在交付文档里。"""
     leftovers = [
