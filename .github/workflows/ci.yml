@@ -3,7 +3,11 @@ name: ci
 # 三道闸，按「越来越贵」排：
 #   1) 桩模式全量测试 —— 不需要任何 key，几十秒
 #   2) 冒烟语料入库 + 建索引 —— 语料由脚本现场生成（二进制不进仓库）
-#   3) 引用/拒答/支撑性验收 —— 需要 key，跑 3 道题，失败就是失败，不吞错误
+#   3) 引用/拒答验收 —— 需要 key，跑 3 道题，失败就是失败，不吞错误
+#
+# 注意：secrets 上下文**不能**用在 step 的 if 里（会判成非法 workflow，整个 run 起不来，
+# 表现为 conclusion=failure 且 jobs 为空）。正确写法是把 secrets 提升到 job 级 env，
+# step 里用 `if: env.XXX != ''` 判断——env 上下文是允许的。
 on:
   push:
     branches: [main, master]
@@ -13,6 +17,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # 默认桩模式：下面真正需要模型的两步会各自覆盖成 "0"
+      MOCK_MODE: "1"
+      DATABASE_URL: sqlite:///./ci.db
+      EMBED_BASE_URL: ${{ secrets.EMBED_BASE_URL }}
+      EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
+      EMBED_MODEL: ${{ secrets.EMBED_MODEL }}
+      EMBED_DIM: ${{ secrets.EMBED_DIM }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,41 +43,25 @@ jobs:
 
       # 桩模式：不需要 key，也不访问外网模型
       - name: 全量测试（MOCK_MODE=1）
-        env:
-          MOCK_MODE: "1"
-          DATABASE_URL: sqlite:///./ci.db
         run: python -m pytest -q
 
       # 生成一页手册 + 3 道题：让下面那道闸有东西可验，而不是空跑
       - name: 生成冒烟语料
         run: python tests/fixtures/generate_smoke_corpus.py
 
-      - name: 入库并建索引
-        if: ${{ secrets.EMBED_API_KEY != '' }}
+      - name: 入库并建索引（需要向量 key，没配则跳过）
+        if: env.EMBED_API_KEY != ''
         env:
-          DATABASE_URL: sqlite:///./ci.db
-          EMBED_BASE_URL: ${{ secrets.EMBED_BASE_URL }}
-          EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
-          EMBED_MODEL: ${{ secrets.EMBED_MODEL }}
-          EMBED_DIM: ${{ secrets.EMBED_DIM }}
+          MOCK_MODE: "0"
         run: |
           python -m app.ingest.pipeline data/raw
           python -m app.retrieval.bench --rebuild
 
-      # 不挂 `|| true`：这道闸要么绿要么红。
-      # 没配 key 时整步跳过（而不是跑出一个假绿）。
-      - name: 引用 / 拒答 / 支撑性验收（需要 key）
-        if: ${{ secrets.LLM_API_KEY != '' && secrets.EMBED_API_KEY != '' }}
+      # 不挂 `|| true`：这道闸要么绿要么红；没配 key 时整步跳过（而不是跑出假绿）
+      - name: 引用 / 拒答 / 支撑性验收（需要两个 key）
+        if: env.EMBED_API_KEY != '' && env.LLM_API_KEY != ''
         env:
           MOCK_MODE: "0"
-          DATABASE_URL: sqlite:///./ci.db
-          EMBED_BASE_URL: ${{ secrets.EMBED_BASE_URL }}
-          EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
-          EMBED_MODEL: ${{ secrets.EMBED_MODEL }}
-          EMBED_DIM: ${{ secrets.EMBED_DIM }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: ${{ secrets.LLM_MODEL }}
         run: |
           python tests/check_citations.py \
             --queries data/eval/ci_smoke.jsonl \
