@@ -5,6 +5,9 @@
 """
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +20,25 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_blank_values(cls, data: Any) -> Any:
+        """把空字符串当成「没配置」，回落到默认值。
+
+        两个真实场景逼出来的：
+
+        1. **GitHub Actions 里未设置的 secret 会变成空字符串**（不是不存在的变量）。
+           于是 `EMBED_DIM=` 会让 pydantic 报 `int_parsing`，整个 Settings 构造失败，
+           pytest 直接收集不了用例（退出码 4），CI 红得莫名其妙。
+        2. 用户在 `.env` 里把某个数值项留空（`EMBED_DIM=`）也是同样的崩法。
+
+        空字符串对字符串字段本来就等于「用默认值」，对数值字段则必须丢弃——
+        否则 `""` 会被当成待解析的值。
+        """
+        if isinstance(data, dict):
+            return {key: value for key, value in data.items() if value not in ("", None)}
+        return data
 
     # ---------------- 存储 ----------------
     # 默认 SQLite 单文件：不需要 Postgres，clone 下来就能跑。换 pgvector 时只改这一行
