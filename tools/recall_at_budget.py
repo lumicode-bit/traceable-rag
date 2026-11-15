@@ -31,11 +31,14 @@ def main(argv: list[str] | None = None) -> int:
     os.environ["DATABASE_URL"] = f"sqlite:///{Path(args.db).as_posix()}"
 
     from app.db import SessionLocal, init_db
-    from app.eval.dataset import load_queries
+    from app.eval.run_eval import _load as load_questions
     from app.retrieval import search_with_ranks
 
     init_db()
-    queries = load_queries(args.queries)
+    # 用 run_eval 的加载器：它保留 gold.chunk_id。
+    # 早先这里用了 dataset.load_queries，那个只留 doc/page，于是命中判定退化成「页码
+    # 相等」——跨页表格拆块后块的实际页码可能与原金标页不同，会假性判为未命中。
+    queries = load_questions(Path(args.queries))
     answerable = [item for item in queries if item.gold]
 
     stats = {budget: 0 for budget in BUDGETS}
@@ -45,8 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     with SessionLocal() as session:
         for item in answerable:
             hits = search_with_ranks(item.query, top_k=args.depth, mode=args.mode, session=session)
-            gold_pairs = item.gold_pairs
-            gold_docs = item.gold_docs
+            gold_pairs = item.gold_pages
+            gold_ids = item.gold_chunks
 
             cumulative = 0
             hit_rank = None
@@ -56,10 +59,11 @@ def main(argv: list[str] | None = None) -> int:
             per_budget = {budget: False for budget in BUDGETS}
             for index, hit in enumerate(hits, start=1):
                 cumulative += len(hit.chunk.content)
-                inside = (
-                    (hit.chunk.document.filename, hit.chunk.page_no) in gold_pairs
-                    if hit.chunk.document
-                    else False
+                # 命中判定优先用 chunk_id（金标就是块）；页码只是兜底，
+                # 因为拆块后块的实际页码可能与原金标页不同
+                inside = hit.chunk_id in gold_ids or (
+                    hit.chunk.document is not None
+                    and (hit.chunk.document.filename, hit.chunk.page_no) in gold_pairs
                 )
                 if inside:
                     if hit_rank is None:
