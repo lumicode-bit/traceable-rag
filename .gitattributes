@@ -1,0 +1,16 @@
+# 统一换行符：仓库里一律存 LF，检出时由各平台决定。
+# 不写这一行时，Windows 上 core.autocrlf 的差异会让每个文件都显示「已修改」，
+# 提交历史里出现 44 个文件的伪改动（+6939 / -6939，插入与删除相等）。
+* text=auto
+
+# 脚本要按平台各自的习惯：bash 用 LF 才跑得起来，bat 用 CRLF 才能被 cmd 正确解析
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# 二进制：不参与任何换行符转换，也不要尝试 diff
+*.png binary
+*.jpg binary
+*.pdf binary
+*.db binary
+*.woff binary
+*.woff2 binary
