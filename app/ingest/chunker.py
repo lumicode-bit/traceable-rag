@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.config import settings
 from app.ingest.loader import ParsedDocument, TextBlock
 
 MIN_CHARS = 400
@@ -201,6 +202,22 @@ def _pack(title: str, section: str, units: list[TextBlock]) -> list[ChunkDraft]:
             continue
 
         if unit.kind == "table":
+            # 短表保持原子性（能带上下文就带）；长表按行拆、每块复制表头。
+            # TABLE_SPLIT_CHARS=0（默认）时不拆——实测拆完更差，见 DESIGN 的对照记录。
+            pieces = (
+                split_table(text, settings.table_split_chars)
+                if settings.table_split_chars > 0
+                else [text]
+            )
+            if len(pieces) > 1:
+                if buffer:
+                    bodies.append((buffer, buffer_page))
+                    buffer = ""
+                    buffer_page = None
+                for piece in pieces:
+                    bodies.append((piece, unit.page_no))
+                continue
+
             # 表格是原子单位：能放进当前块就带上下文，放不下就单独成块，绝不拆开。
             # 当前块还很短（例如只有标题和表题）时优先跟随表格，避免标题被孤立。
             fits = bool(buffer) and len(buffer) + len(text) + 1 + prefix_len <= MAX_CHARS
@@ -246,6 +263,74 @@ def _pack(title: str, section: str, units: list[TextBlock]) -> list[ChunkDraft]:
             )
         )
     return drafts
+
+
+def split_table(text: str, limit: int) -> list[str]:
+    """把长表格按行拆成多块，**每块都复制表头**。
+
+    为什么不再坚持「表格原子性」：一张 2900 字的参数表整块入库，向量是被几十行
+    平均出来的方向，语义检索几乎排不到它前面；而用户问的往往只是其中一行。
+    拆开、每块带上表头之后，「某一行」的语义才可能被命中，同时模型看到的仍是
+    「表头 + 若干行」，不会出现有数据没表头的情况。
+
+    - 表头 = 第一行 + 紧随其后的分隔行（`| --- |`）；
+    - 若表头本身是两行（合并单元格被拍平成的第二行），一并复制；
+    - 表格之外的说明文字（表题、脚注）跟第一块走，不重复。
+    返回 [text] 表示不需要拆。
+    """
+    if len(text) <= limit:
+        return [text]
+
+    lines = text.splitlines()
+    table_start = next((i for i, line in enumerate(lines) if line.strip().startswith("|")), None)
+    if table_start is None:
+        return [text]
+
+    preamble = lines[:table_start]
+    table_lines = [line for line in lines[table_start:] if line.strip()]
+    if len(table_lines) < 4:
+        return [text]  # 去掉表头与分隔行后没几行数据，拆了只剩碎片
+
+    header: list[str] = [table_lines[0]]
+    body_start = 1
+    if len(table_lines) > 1 and set(table_lines[1].strip()) <= set("|-: "):
+        header.append(table_lines[1])
+        body_start = 2
+    # 第二行表头（合并单元格拍平后常见）：数据行前若还有一行几乎全是空单元格，算作表头
+    if body_start < len(table_lines) - 1:
+        candidate = table_lines[body_start]
+        cells = [cell.strip() for cell in candidate.strip("|").split("|")]
+        if cells and sum(1 for cell in cells if not cell) >= max(1, len(cells) // 2):
+            header.append(candidate)
+            body_start += 1
+
+    rows = table_lines[body_start:]
+    header_text = "\n".join(header)
+    header_len = len(header_text) + 1
+
+    pieces: list[list[str]] = []
+    current: list[str] = []
+    current_len = header_len
+    for row in rows:
+        if current and current_len + len(row) + 1 > limit:
+            pieces.append(current)
+            current = []
+            current_len = header_len
+        current.append(row)
+        current_len += len(row) + 1
+    if current:
+        pieces.append(current)
+
+    if len(pieces) <= 1:
+        return [text]
+
+    result: list[str] = []
+    for index, piece in enumerate(pieces):
+        body = f"{header_text}\n" + "\n".join(piece)
+        if index == 0 and preamble:
+            body = "\n".join(preamble) + "\n" + body
+        result.append(body)
+    return result
 
 
 def _split_long_text(text: str, limit: int) -> list[str]:
