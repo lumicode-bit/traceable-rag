@@ -50,7 +50,11 @@ jobs:
       - name: 全量测试（MOCK_MODE=1）
         run: |
           set -o pipefail
-          python -m pytest -q 2>&1 | tee pytest.log
+          python -m pytest --version | sed 's/^/::notice::pytest /'
+          python -m pytest -q 2>&1 | tee pytest.log || {
+            grep -E '^(ERROR|FAILED|E  )' pytest.log | head -8 | sed 's/^/::error::/'
+            exit 1
+          }
 
       # 生成一页手册 + 3 道题：让下面那道闸有东西可验，而不是空跑
       - name: 生成冒烟语料
