@@ -27,3 +27,7 @@ deploy/certbot/
 # 沙箱/编辑器留下的临时文件，不该进仓库
 .fuse_hidden*
 *.swp
+
+# 评测报告进仓库：它是纯聚合数字与题号，不含手册正文。# 不提交的话 test_docs.py 的一致
+# 性检查在所有干净环境里都会被 skipif 跳过，那道防线等于只在本机生效。
+!results/report.md

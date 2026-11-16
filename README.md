@@ -142,6 +142,9 @@ flowchart TB
 「该答没答」（误拒）逐题记录、不阻塞构建，当前 1/48。把两者混成一个布尔值，CI 会因为
 1 条误拒长期红，红久了就没人看了。
 
+> **CI 覆盖范围**：绿勾只代表 `MOCK_MODE=1` 下的管道测试（106 项）通过，**不含真实模型效果**；
+> 真模型验收要在仓库里配好 `LLM_*` / `EMBED_*` secrets 后才会执行，没配时该步骤整步跳过。
+
 明细：`data/eval/p3_citations.json`；重跑：`python tests/check_citations.py --queries data/eval/questions.jsonl`。
 
 ### 跨厂商压测（工具就绪，尚未跑真实外部手册）
